@@ -1,1 +1,41 @@
 iswim - #lang for writing ISWIM terms and helping to write ISWIM interpeters
+
+----
+
+```
+#lang iswim
+X := M
+...
+M
+```
+
+```
+M = X
+  | b
+  | (λ (X ...) M)
+  | (M N ...+)
+  | (o M ...)
+b = number
+  | string
+o = add1
+  | +
+  | *
+```
+
+Line comments are written with `;;`
+
+Multi-arity functions and function applications are implicitly curried.
+
+Definitions are inlined in term before evaluation, and thus are not recursive.
+
+Evaluation is call-by-value.
+
+----
+
+To print out term in "Python/Javascript" syntax: `#lang iswim #:fun`
+
+To print out term in "C++/Java" syntax: `#lang iswim #:new`
+
+To print out term in "Racket" syntax: `#lang iswim #:parens`
+
+To print out term as graphical tree: `#lang iswim #:tree`

@@ -11,22 +11,28 @@
   (raise-syntax-error 'iswim-lam "Illegal outside #%module-begin"))
 (define-syntax (iswim-def stx)
   (raise-syntax-error 'iswim-def "Illegal outside #%module-begin"))
+(define-syntax (iswim-let stx)
+  (raise-syntax-error 'iswim-let "Illegal outside #%module-begin"))
 
 (begin-for-syntax
   (define-splicing-syntax-class idef
+    #:description "ISWIM definition"
     #:attributes (x ast)
     (pattern (~seq x:id (~literal iswim-def) e:iexp)
              #:attr ast #'e.ast))
+  (define-syntax-class iprim
+    #:description "ISWIM primitive"
+    (pattern (~literal add1))
+    (pattern (~literal +))
+    (pattern (~literal *)))
   (define-syntax-class iexp
+    #:description "ISWIM expression"
     #:attributes (ast)
-    ;; Unary operators
-    (pattern ((~literal add1) x:iexp)
-             #:attr ast #'(Prim 'add1 (list x.ast)))
-    ;; Binary operators
-    (pattern ((~literal +) x:iexp y:iexp)
-             #:attr ast #'(Prim '+ (list x.ast y.ast)))
-    (pattern ((~literal *) x:iexp y:iexp)
-             #:attr ast #'(Prim '* (list x.ast y.ast)))
+    ;; Primitives
+    (pattern (o:iprim x:iexp ...)
+             #:attr ast #'(Prim 'o (list x.ast ...)))
+    (pattern o:iprim
+             #:attr ast #'(Lam 'x (Prim 'o (list (Var 'x)))))
     ;; Constants
     (pattern n:nat
              #:attr ast #'(NumCon n))
@@ -34,13 +40,16 @@
              #:attr ast #'(StrCon s))
     ;; Variable
     (pattern ast:id)
-    ;; App
-    (pattern (m:iexp n:iexp)
-             #:attr ast #'(App m.ast n.ast))
+    ;; Let
+    (pattern ((~literal iswim-let) ([x:id xm:iexp] ...) bm:iexp)
+             #:attr ast #'(App* (Lam* '(x ...) (let ([x (Var 'x)] ...) bm.ast))
+                                (list xm.ast ...)))
     ;; Lambda
-    (pattern ((~literal iswim-lam) x:id . m:iexp)
-             #:attr ast #'(Lam 'x (let ([x (Var 'x)]) m.ast)))
-    ))
+    (pattern ((~literal iswim-lam) (x:id ...+) m:iexp)
+             #:attr ast #'(Lam* '(x ...) (let ([x (Var 'x)] ...) m.ast)))
+    ;; App
+    (pattern (m:iexp n:iexp ...+)
+             #:attr ast #'(App* m.ast (list n.ast ...)))))
 
 (define-syntax (iswim-mb stx)
   (syntax-parse stx
@@ -50,14 +59,16 @@
               (~and (~seq #:new)
                     (~bind [go! #'iswim-display-new]))
               (~and (~seq #:fun)
-                    (~bind [go! #'iswim-display-fun])))
+                    (~bind [go! #'iswim-display-fun]))
+              (~and (~seq #:tree)
+                    (~bind [go! #'iswim-display-tree])))
          #:defaults ([go! #'iswim-eval]))
         d:idef ... e:iexp)
      (syntax/loc stx
        (#%module-begin
         (module+ main
           (go!
-           (let ([d.x d.ast] ...)
+           (let* ([d.x d.ast] ...)
              e.ast)))))]))
 
 (provide
@@ -67,7 +78,8 @@
   [iswim-mb #%module-begin]
   [iswim-lam λ]
   [iswim-lam lambda]
-  [iswim-def :=]))
+  [iswim-def :=]
+  [iswim-let let]))
 
 ;; Runtime
 (require racket/match
@@ -80,6 +92,13 @@
 (struct Prim (o ms) #:transparent)
 (struct NumCon (n) #:transparent)
 (struct StrCon (s) #:transparent)
+
+(define (App* m ns)
+  (for/fold ([f m]) ([n (in-list ns)])
+    (App f n)))
+(define (Lam* xs m)
+  (for/fold ([m m]) ([x (in-list (reverse xs))])
+    (Lam x m)))
 
 (define ->sexp
   (match-lambda
@@ -106,6 +125,30 @@
   (displayln (->new a)))
 (define (iswim-display-fun a)
   (displayln (regexp-replace* #rx"new " (->new a) "")))
+
+(define (iswim-display-tree a)
+  (local-require pict
+                 pict/tree-layout
+                 racket/draw
+                 racket/class)
+  (define @-pict (text "@"))
+  (define λ-pict (text "λ"))
+  (define ->tree
+    (match-lambda
+      [(or (Var x) (NumCon x) (StrCon x)) (tree-layout #:pict (text (~a x)))]
+      [(App m n) (tree-layout #:pict @-pict (->tree m) (->tree n))]
+      [(Lam x m) (tree-layout #:pict λ-pict (->tree (Var x)) (->tree m))]
+      [(Prim o ms) (apply tree-layout #:pict (text (~a o))
+                          (map ->tree ms))]))
+  (define tl (->tree a))
+  (define p (naive-layered tl))
+  (define bm (pict->bitmap p
+                           #:make-bitmap (λ (w h)
+                                           (make-bitmap w h #f))))
+  (define pth (build-path (current-directory) "iswim.png"))
+  (send bm save-file pth 'png)
+  (eprintf "Wrote to ~a\n" pth)
+  (void))
 
 (define (δ o ms)
   (match* (o ms)

@@ -15,6 +15,7 @@ M = X
   | (λ (X ...+) M)
   | (M N ...+)
   | (o M ...)
+  | (let ([X M] ...) M)
 b = number
   | string
 o = add1
@@ -24,9 +25,10 @@ o = add1
 
 Line comments are written with `;;`
 
-Multi-arity functions and function applications are implicitly curried.
+Multi-arity functions and function applications are implicitly
+curried. `let` abbreviates function definition and application.
 
-Definitions are inlined in term before evaluation, and thus are not recursive.
+Definitions are inlined into term before evaluation, and thus are not recursive.
 
 Evaluation is call-by-value.
 

@@ -1,4 +1,4 @@
-#lang iswim 
+#lang iswim #:new
 
 ;; Numbers
 zero := (λ (s z) z)
